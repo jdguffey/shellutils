@@ -37,7 +37,7 @@ parseParms() {
 # Parms: $1 -- src file or directory to copy
 #        $2 -- dst file or directory
 #        $3 -- recursive (-r) flag (optional)
-# Retrn: 0 on success, != on failure
+# Retrn: 0 on success, !0 on failure
 cp() {
    local _ret _src _dst _size _last
    _ret=0
@@ -45,21 +45,23 @@ cp() {
    _dst="$2"
    _size=0
 
-   _size="$(du -sb "$_src" | awk '{print $1}')"
+   _size="$(du -sb "$_src" | awk '{print $1}')" # Figure out how much data we're pushing for pv(1)
    if [ -n "$3" ]; then
       _recursive=1
 
       if [ ! -d "$_dst" ]; then
-         mkdir -p "$_dst"
+         mkdir -p "$_dst"  # Dest location is a directory name to create -- do so
       else
+         # Dest location is an existing directory -- copy into a subdir of it
          _dst="${_dst}/$(basename "$_src")"
+         mkdir -p "$_dst"
       fi
 
-      tar -C "$_src" -cf - "." | pv -s "$_size" | ([ ! -d "$_dst" ] && mkdir "$_dst"; cd "$_dst"; tar -xf -)   # More efficient way to do this?
+      tar -C "$_src" -cf - "." | pv -s "$_size" | (cd "$_dst"; tar -xf -)   # More efficient way to do this?
       _ret=$?
    else
       if [ -d "$_dst" ]; then
-         _dst="${_dst}/$(basename "$_src")"
+         _dst="${_dst}/$(basename "$_src")"  # dd has to have a filename to target
       fi
 
       dd if="$_src" | pv -s "$_size" | dd of="$_dst"  # Seems less efficient than cp(1)?
@@ -70,14 +72,14 @@ cp() {
 }
 
 # Do the actual work requested
-parseParms "$@"
-if [ "$?" -eq "0" ]; then
-   if [ "$#" -eq "3" ]; then
+parseParms "$@"               # Validate parameters
+if [ "$?" -eq "0" ]; then     # I know what these parms mean
+   if [ "$#" -eq "3" ]; then  # Recursive
       cp "$2" "$3" "-r"
-   else
+   else                       # Non-recursive
       cp "$@"
    fi
-else
+else                          # Unsupported parms -- use system cp(1)
    $SYSTEMCP "$@"
 fi
 
