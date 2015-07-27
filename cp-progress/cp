@@ -1,0 +1,85 @@
+#!/bin/sh
+
+# Dependencies: POSIX (bourne) shell, pv
+
+# Global vars
+SYSTEMCP="$(command -v cp)"         # Find the system's cp(1) bin location
+SYSTEMCP="${SYSTEMCP:-command cp}"  # If cp(1) exists only as a builtin, use it
+
+# Parses parameters given to the script globally
+# Parms: Variable
+# Retrn: 0 on success, 1 on unknown/failure
+parseParms() {
+   local _ret=0
+   local _recursive=0
+
+   if [ "$#" -gt "3" ]; then  # >3 parms, unsupported
+      _ret=1
+   else  # <=3 parms, check them out
+      if [ "$1" != "-r" ]; then  # Only -r is supported as parm1
+         if [ ! -f "$1" ]; then # $1 is not -r or an existing file -- fail
+            _ret=1
+         fi
+      else  # $1 is "-r"
+         _recursive=1
+         shift
+      fi
+
+      if [ -f "$1" ] || [ -d "$1" -a "$_recursive" -eq "1" ]; then  # $2 is an existing file/dir
+         _ret=0
+      fi
+   fi
+
+   return $_ret
+}
+
+# Performs copy operation with a progress bar
+# Parms: $1 -- src file or directory to copy
+#        $2 -- dst file or directory
+#        $3 -- recursive (-r) flag (optional)
+# Retrn: 0 on success, != on failure
+cp() {
+   local _ret _src _dst _size _last
+   _ret=0
+   _src="$1"
+   _dst="$2"
+   _size=0
+
+   _size="$(du -sb "$_src" | awk '{print $1}')"
+   if [ -n "$3" ]; then
+      _recursive=1
+
+      if [ ! -d "$_dst" ]; then
+         mkdir -p "$_dst"
+      else
+         _dst="${_dst}/$(basename "$_src")"
+      fi
+
+      tar -C "$_src" -cf - "." | pv -s "$_size" | ([ ! -d "$_dst" ] && mkdir "$_dst"; cd "$_dst"; tar -xf -)   # More efficient way to do this?
+      _ret=$?
+   else
+      if [ -d "$_dst" ]; then
+         _dst="${_dst}/$(basename "$_src")"
+      fi
+
+      dd if="$_src" | pv -s "$_size" | dd of="$_dst"  # Seems less efficient than cp(1)?
+      _ret=$?
+   fi
+
+   return "$_ret"   
+}
+
+# Do the actual work requested
+parseParms "$@"
+if [ "$?" -eq "0" ]; then
+   if [ "$#" -eq "3" ]; then
+      cp "$2" "$3" "-r"
+   else
+      cp "$@"
+   fi
+else
+   $SYSTEMCP "$@"
+fi
+
+exit $?  # Tell the system what the retval was
+
