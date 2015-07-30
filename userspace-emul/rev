@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+
+# rev -- implements a replacement for GNU rev on systems that don't have it
+#     Thanks to reddit user /u/whetu for the initial implementation of this, which I used as a base
+#
+# dependencies -- GNU BASH
+
+# Global Variables
+UTILNAME="rev"    # Name of the utility provided by this script
+VERSION="0.1"     # Version of this script
+
+# Prints version information
+# Parms: none
+# Print: version information
+# Retrn: none
+version() {
+   printf "%s from %s %s\n" "$0" "userspace-emul" "$VERSION"
+}
+
+# Prints a usage message
+# Parms: none
+# Print: usage message
+# Retrn: none
+usage() {
+   printf "Usage: %s [options] [file ...]\n\n" "$0"
+   printf "%s\n\n" "Reverse lines characterwise."
+   printf "Options:\n"
+   printf "\t-h, --help\tdisplay this help and exit\n"
+   printf "\t-v, --version\toutput version information and exit\n\n"
+   printf "For more details see rev(1).\n"
+}
+
+# Checks parameters given to script for validity
+# Parms: $1..n -- flags/files passed to script (optional)
+# Print: error message if necessary
+# Retrn: 0 on success, !0 on failure
+parseFlags(){
+   local _ret=0
+   local _quit=0
+
+   if [ -n "$*" ]; then # Have parms to check out
+      while [ "$#" -gt "0" ] && [ "$_quit" -eq "0" ]; do
+         case $1 in
+            -h|-*h*|--help)
+               usage
+               _ret=0
+               _quit=1
+               ;;
+            -V|--version)
+               version
+               _ret=0
+               _quit=1
+               ;;
+            -*)
+               if [ ! -f "$1" ]; then
+                  printf "%s: invalid option -- \"%s\"\n" "$0" "$1"
+                  usage >&2
+                  _ret=1
+                  _quit=1
+               fi
+               ;;
+         esac
+         shift
+      done
+   fi
+   
+   if [ "$_quit" -eq "1" ]; then
+      exit "$_ret"
+   fi
+
+   return "$_ret"
+}
+
+# Reverses elements in an array (newline-delimited)
+# Parms: $1..n -- >=1 file containing the array to reverse (optional, else use STDIN)
+# Print: The reversed input
+# Retrn: 0 on success, !0 on failure
+rev() {
+   local _input=""
+   local _save_ifs="$IFS"
+
+   # If parm is >=1 file, read it/them, else use STDIN
+   if [ -n "$*" ]; then
+      _input="$(cat "$@" | sed 's/^$/ /g')"  # Preserve '\n' for output
+   else
+      _input="$(cat | sed 's/^$/ /g')" # Preserve '\n' for output
+   fi
+
+   if [ -z "$_input" ]; then
+      return 1
+   fi
+
+   # Loop through input line-by-line
+   IFS="
+" # IFS='\n' allows word-splitting on line boundaries
+   for _line in $_input; do
+      # Reverse line 1 char at a time
+      for i in $(seq 1 ${#_line}); do
+         cur="$((${#_line} - $i))"  # Get correct index
+         printf "%c" "${_line:$cur:1}"
+      done
+      printf "\n"
+   done
+   IFS="$_save_ifs"  # Restore IFS, though it's really unnecessary here...
+
+   return 0
+}
+
+parseFlags "$@" || return $?
+
+# Figure out whether to use the system rev of this script's
+command -v rev >&- 2>&-
+if [ $? -eq 0 ]; then
+   command rev "$@"
+   exit $?
+else
+   # Parse out flags to set global opts first?
+   rev "$@"
+   exit $?
+fi
+
