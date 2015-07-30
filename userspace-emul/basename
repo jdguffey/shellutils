@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+
+# basename -- implements a replacement for GNU basename on systems that don't have it
+#
+# dependencies -- GNU BASH, GNU sed
+
+# Global Variables
+UTILNAME="basename"  # Name of the utility provided by this script
+VERSION="0.1"        # Version of this script
+MULTIPLE="0"         # Default to NAME [SUFFIX] mode
+SUFFIX=""            # Default to no suffix
+ENDING="\n"          # Default to newline-line ending
+NUMPARMS="0"         # Number of parameters to shift later
+
+# Prints version information
+# Parms: none
+# Print: version information
+# Retrn: none
+version() {
+   printf "%s from %s %s\n" "$0" "userspace-emul" "$VERSION"
+}
+
+# Prints a usage message
+# Parms: none
+# Print: usage message
+# Retrn: none
+usage() {
+   printf "Usage:\t%s NAME [SUFFIX]\n" "$0"
+   printf "  or:\t%s OPTION... NAME...\n" "$0"
+   printf "Print NAME with any leading directory components removed.\n"
+   printf "If specified, also remove a trailing SUFFIX\n\n"
+   printf "Mandatory arguments to long options are mandatory for short options too.\n"
+   printf "  -a, --multiple\tsupport multiple arguments and treat each as a NAME\n"
+   printf "  -s, --suffix=SUFFIX\tremove a trailing SUFFIX; implies -a\n"
+   printf "  -z, --zero\t\tend each output line with NUL, not newline\n"
+   printf "  \t--help\tdisplay this help and exit\n"
+   printf "  \t--version\toutput version information and exit\n\n"
+   printf "Examples:\n"
+   printf "  %s /usr/bin/sort\t\t-> \"sort\"\n" "$0"
+   printf "  %s include/stdio.h .h\t-> \"stdio\"\n" "$0"
+   printf "  %s -s .h include/stdio.h\t-> \"stdio\"\n" "$0"
+   printf "  %s -a any/str1 any/str2\t-> \"str1\" followed by \"str2\"\n" "$0"
+}
+
+# Checks parameters given to script for validity
+# Parms: $1..n -- flags/other parms passed to script (optional)
+# Print: error message if necessary
+# Retrn: 0 on success, !0 on failure
+parseFlags(){
+   local _ret=0
+   local _quit=0
+
+   if [ -n "$*" ]; then # Have parms to check out
+      while [ "$#" -gt "0" ] && [ "$_quit" -eq "0" ]; do
+         case $1 in
+            -h|--help)
+               usage
+               _ret=0
+               _quit=1
+               ;;
+            --version)
+               version
+               _ret=0
+               _quit=1
+               ;;
+            -a|--multiple)
+               MULTIPLE=1
+               ;;
+            -s|--suffix=*)
+               if [ -n "$(echo "$1" | grep '=')" ]; then
+                  # long form -- get suffix
+                  SUFFIX="$(echo "$1" | sed 's/--suffix=//')"
+               else
+                  # short form -- get suffix
+                  shift
+                  SUFFIX="$1"
+                  NUMPARMS=$((NUMPARMS + 1))
+               fi
+               # Escape SUFFIX for regex special chars
+               SUFFIX="$(echo "$SUFFIX" | sed -r "s/(['\"\\/\$.])/\\\\\1/g")" # Wow that's ugly...
+               ;;
+            -z|--zero)
+               ENDING='\0'
+               ;;
+            -*)
+               printf "%s: invalid option -- \"%s\"\n" "$0" "$1"
+               usage >&2
+               _ret=1
+               _quit=1
+               ;;
+            *)
+               return 0 # Early exit -- don't need to worry about any more parms
+               ;;
+         esac
+         shift
+         NUMPARMS=$((NUMPARMS + 1))
+      done
+   fi
+
+   if [ "$_quit" -eq "1" ]; then
+      exit "$_ret"
+   fi
+
+   return "$_ret"
+}
+
+# Print a given input stripped of its directory components (and optionally a suffix)
+# Parms: $1 -- input to strip
+# Print: The stripped input
+basename() {
+   local _stripped="$(echo "$1" | sed -r 's@.*/([^/]+)$@\1@')" # Get rid of the leading path portion
+   _stripped="$(echo "$_stripped" | sed -r "s@^(.*)${SUFFIX}?\$@\1@")"  # Get rid of the suffix
+
+   if [ "$ENDING" = "\0" ]; then
+      printf "%s\0" "$_stripped"
+   else
+      printf "%s\n" "$_stripped"
+   fi
+}
+
+parseFlags "$@" || return $?
+
+# Figure out whether to use the system basename or this script's
+command -v basename >&- 2>&-
+if [ $? -eq 0 ]; then
+   command basename "$@"
+   exit $?
+else
+   shift "$NUMPARMS" # Shift flags away
+
+   if [ "$MULTIPLE" -eq "1" ]; then # Handle each of $1 .. $# as individual NAMEs
+      while [ "$#" -gt "0" ]; do
+         basename "$1"
+         shift
+      done
+   elif [ -n "$2" ]; then  # no multiple, but there is a suffix given
+      SUFFIX="$2"
+      basename "$1"
+   else  # no multiple, no suffix
+      basename "$1"
+   fi
+
+   exit 0
+fi
+
