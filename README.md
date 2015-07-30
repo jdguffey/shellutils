@@ -14,10 +14,10 @@ userspace-emul:
 
 ## Installation
 
-At this time, installation is handled by prepending the cp-projects and/or userspace-emul directories to your $PATH, as such:
+At this time, installation is handled by prepending the cp-progress and/or userspace-emul directories to your $PATH, as such:
 
 (in ~/.bashrc or similar):
-export "PATH=~/bin/shellutils/cp-projects:~/bin/shellutils/userspace-emul:$PATH"
+export "PATH=~/bin/shellutils/cp-progress:~/bin/shellutils/userspace-emul:$PATH"
 
 Someday I plan to also implement an installation script that may do something slightly more intelligent.
 
